@@ -3,16 +3,14 @@ import 'package:diuquestionbank/views/question/question_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
-import '../../data/departments.dart';
-import '../../models/department_model.dart' as app_models;
 import '../../models/task_model.dart';
 import '../../services/notification_service.dart';
 import '../../viewmodels/home_viewmodel.dart';
 import '../profile/profile_screen.dart';
 import '../task_manager/task_manager_screen.dart';
-import '../widgets/home_slider.dart'; // For navigation
+import '../widgets/home_slider.dart';
 import 'department_secelction_screen.dart';
-import 'search_screen.dart'; // Import the new search screen
+import 'search_screen.dart';
 
 //==============================================================================
 // Main Home Screen
@@ -29,12 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Defer initialization until after the first frame is built.
-    // This prevents initialization from blocking the UI thread and ensures context is available.
+    // Defer initialization until after the first frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        // Use read for one-time actions like initialization.
-        // The init method is now more efficient.
         context.read<HomeViewModel>().init();
         _requestNotificationPermission();
       }
@@ -51,6 +46,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
 
@@ -58,22 +58,27 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: colors.background,
       body: Consumer<HomeViewModel>(
         builder: (context, viewModel, child) {
-          // Display a shimmer loading effect while data is being initialized.
+          // Check for errors first (using errorMessage instead of hasError)
+          if (viewModel.errorMessage != null && !viewModel.isInitializing) {
+            return _buildErrorState(viewModel);
+          }
+
+          // Display shimmer loading effect while data is being initialized
           if (viewModel.isInitializing) {
             return const _HomeScreenShimmer();
           }
 
-          // If the user has not selected a department, show the selection screen.
+          // If user hasn't selected a department, show selection screen
           if (viewModel.userDepartmentId == null ||
               viewModel.userDepartmentId!.isEmpty) {
             return const DepartmentSelectionScreen();
           }
 
-          // Once initialized and a department is selected, show the main content.
+          // Main content when initialized and department is selected
           return SafeArea(
             bottom: false,
             child: RefreshIndicator(
-              onRefresh: viewModel.refreshData,
+              onRefresh: () => viewModel.refreshData(),
               backgroundColor: colors.surfaceContainerHighest,
               color: colors.secondary,
               child: CustomScrollView(
@@ -124,12 +129,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Helper method to build section widgets consistently.
-  Widget _buildSection(BuildContext context,
-      {required String title,
+  /// Helper method to build section widgets consistently
+  Widget _buildSection(
+      BuildContext context, {
+        required String title,
         String? actionText,
         VoidCallback? onAction,
-        required Widget content}) {
+        required Widget content,
+      }) {
     return SliverToBoxAdapter(
       child: _Section(
         title: title,
@@ -139,14 +146,59 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  /// Builds error state for top-level errors
+  Widget _buildErrorState(HomeViewModel viewModel) {
+    return SafeArea(
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 64,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                viewModel.errorMessage ?? 'An unexpected error occurred',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: viewModel.refreshData,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Try Again'),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () {
+                  // Force re-initialization
+                  context.read<HomeViewModel>().init();
+                },
+                child: const Text('Restart App'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 //==============================================================================
-// Shimmer Placeholders (Unchanged)
+// Shimmer Placeholders
 //==============================================================================
+
 class _AppShimmer extends StatelessWidget {
   final Widget child;
   const _AppShimmer({required this.child});
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -160,6 +212,7 @@ class _AppShimmer extends StatelessWidget {
 
 class _HomeScreenShimmer extends StatelessWidget {
   const _HomeScreenShimmer();
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -236,6 +289,7 @@ class _HomeScreenShimmer extends StatelessWidget {
 class _ShimmerSection extends StatelessWidget {
   final Widget child;
   const _ShimmerSection({required this.child});
+
   @override
   Widget build(BuildContext context) {
     return _AppShimmer(
@@ -254,13 +308,69 @@ class _ShimmerSection extends StatelessWidget {
   }
 }
 
+class _SkeletonLoader extends StatelessWidget {
+  final double height;
+  final double width;
+  final double borderRadius;
+  final bool isCircle;
+
+  const _SkeletonLoader({
+    this.height = 20,
+    this.width = 200,
+    this.borderRadius = 12.0,
+    this.isCircle = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      width: width,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade300,
+        borderRadius: isCircle ? null : BorderRadius.circular(borderRadius),
+        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
+      ),
+    );
+  }
+}
+
+class _HorizontalListSkeleton extends StatelessWidget {
+  final int count;
+  final double itemWidth;
+  final double height;
+  final double spacing;
+
+  const _HorizontalListSkeleton({
+    this.count = 3,
+    required this.itemWidth,
+    required this.height,
+    this.spacing = 16.0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0),
+        itemCount: count,
+        itemBuilder: (context, index) => Padding(
+          padding: EdgeInsets.only(right: spacing),
+          child: _SkeletonLoader(
+              height: height, width: itemWidth, borderRadius: 16),
+        ),
+      ),
+    );
+  }
+}
+
 //==============================================================================
 // Primary UI Components
 //==============================================================================
 
-/// UPDATE: This widget now uses `Selector` for performance.
-/// It only rebuilds when the user's name or profile picture URL changes,
-/// preventing unnecessary rebuilds from other state changes in the ViewModel.
 class _Header extends StatelessWidget {
   const _Header();
 
@@ -269,44 +379,48 @@ class _Header extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colors = Theme.of(context).colorScheme;
 
-    // Use a tuple to select multiple values from the ViewModel.
-    final (userName, profilePictureUrl) =
-    context.select<HomeViewModel, (String, String?)>(
-          (vm) => (vm.userName, vm.profilePictureUrl),
-    );
+    return Selector<HomeViewModel, (String, String?)>(
+      selector: (context, vm) => (vm.userName, vm.profilePictureUrl),
+      builder: (context, data, child) {
+        final (userName, profilePictureUrl) = data;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Welcome back,',
-                    style: textTheme.titleMedium
-                        ?.copyWith(color: colors.onSurfaceVariant)),
-                Text(
-                  userName,
-                  style: textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold, color: colors.onBackground),
-                  overflow: TextOverflow.ellipsis,
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Welcome back,',
+                      style: textTheme.titleMedium
+                          ?.copyWith(color: colors.onSurfaceVariant),
+                    ),
+                    Text(
+                      userName,
+                      style: textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colors.onBackground,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 16),
+              ClickableAvatar(
+                profilePictureUrl: profilePictureUrl,
+                userName: userName,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          // Pass the selected values directly to the ClickableAvatar
-          ClickableAvatar(
-            profilePictureUrl: profilePictureUrl,
-            userName: userName,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ProfileScreen()),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -322,7 +436,9 @@ class _SearchBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: GestureDetector(
         onTap: () => Navigator.push(
-            context, MaterialPageRoute(builder: (context) => const SearchScreen())),
+          context,
+          MaterialPageRoute(builder: (context) => const SearchScreen()),
+        ),
         child: AbsorbPointer(
           child: TextField(
             decoration: InputDecoration(
@@ -349,11 +465,12 @@ class _Section extends StatelessWidget {
   final VoidCallback? onAction;
   final Widget content;
 
-  const _Section(
-      {required this.title,
-        this.actionText,
-        this.onAction,
-        required this.content});
+  const _Section({
+    required this.title,
+    this.actionText,
+    this.onAction,
+    required this.content,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -372,9 +489,11 @@ class _Section extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(title,
-                    style: textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold)),
+                Text(
+                  title,
+                  style: textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
+                ),
                 if (localActionText != null && onAction != null)
                   TextButton(
                     onPressed: onAction,
@@ -398,7 +517,7 @@ class _Section extends StatelessWidget {
 }
 
 //==============================================================================
-// NEW and UPDATED Sections (Unchanged)
+// Stats and How It Works Sections
 //==============================================================================
 
 class _StatsGrid extends StatelessWidget {
@@ -410,14 +529,13 @@ class _StatsGrid extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final List<
-        ({
-        IconData icon,
-        String value,
-        String label,
-        Color color,
-        List<Color> gradient
-        })> stats = [
+    final List<({
+    IconData icon,
+    String value,
+    String label,
+    Color color,
+    List<Color> gradient
+    })> stats = [
       (
       icon: Icons.picture_as_pdf_outlined,
       value: '${viewModel.totalQuestions}+',
@@ -512,9 +630,11 @@ class _StatCardState extends State<_StatCard> {
   bool _isHovered = false;
 
   void _handleHover(bool hover) {
-    setState(() {
-      _isHovered = hover;
-    });
+    if (mounted) {
+      setState(() {
+        _isHovered = hover;
+      });
+    }
   }
 
   @override
@@ -523,8 +643,9 @@ class _StatCardState extends State<_StatCard> {
     final textTheme = Theme.of(context).textTheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final cardShadow =
-    _isHovered ? widget.color.withOpacity(0.4) : widget.color.withOpacity(0.2);
+    final cardShadow = _isHovered
+        ? widget.color.withOpacity(0.4)
+        : widget.color.withOpacity(0.2);
     final cardScale = _isHovered ? 1.03 : 1.0;
     final cardBorder = _isHovered
         ? Border.all(color: widget.color.withOpacity(0.3), width: 1)
@@ -597,6 +718,7 @@ class _StatCardState extends State<_StatCard> {
 
 class _HowItWorksSection extends StatelessWidget {
   const _HowItWorksSection();
+
   @override
   Widget build(BuildContext context) {
     return _Section(
@@ -681,17 +803,20 @@ class _StepCard extends StatelessWidget {
                   child: Text(
                     step,
                     style: TextStyle(
-                        color: colors.onSecondaryContainer,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14),
+                      color: colors.onSecondaryContainer,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
           const Spacer(),
-          Text(title,
-              style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 4),
           Text(
             description,
@@ -706,7 +831,7 @@ class _StepCard extends StatelessWidget {
 }
 
 //==============================================================================
-// Section Content Widgets (Unchanged)
+// Section Content Widgets
 //==============================================================================
 
 class _RecentQuestionsList extends StatelessWidget {
@@ -730,8 +855,8 @@ class _RecentQuestionsList extends StatelessWidget {
   Widget build(BuildContext context) {
     if (viewModel.isInitializing && viewModel.recentQuestions.isEmpty) {
       return const _AppShimmer(
-          child:
-          _HorizontalListSkeleton(itemWidth: 150, height: 180, spacing: 12));
+        child: _HorizontalListSkeleton(itemWidth: 150, height: 180, spacing: 12),
+      );
     }
     if (viewModel.errorMessage != null) {
       return Padding(
@@ -776,17 +901,21 @@ class _RecentQuestionsList extends StatelessWidget {
 class _StudyPlanView extends StatelessWidget {
   final HomeViewModel viewModel;
   const _StudyPlanView({required this.viewModel});
+
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: viewModel.isInitializing && viewModel.upcomingTasks.isEmpty
           ? const _AppShimmer(
-          child: _SkeletonLoader(
-              height: 88, width: double.infinity, borderRadius: 12))
+        child: _SkeletonLoader(
+            height: 88, width: double.infinity, borderRadius: 12),
+      )
           : viewModel.errorMessage != null
           ? _ErrorMessage(
-          message: viewModel.errorMessage!, onRetry: viewModel.refreshData)
+        message: viewModel.errorMessage!,
+        onRetry: viewModel.refreshData,
+      )
           : _StudyPlanCard(tasks: viewModel.upcomingTasks),
     );
   }
@@ -795,6 +924,7 @@ class _StudyPlanView extends StatelessWidget {
 class _DailyTipView extends StatelessWidget {
   final HomeViewModel viewModel;
   const _DailyTipView({required this.viewModel});
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -802,14 +932,19 @@ class _DailyTipView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: viewModel.isInitializing && viewModel.dailyTip == null
           ? const _AppShimmer(
-          child: _SkeletonLoader(
-              height: 90, width: double.infinity, borderRadius: 12))
+        child: _SkeletonLoader(
+            height: 90, width: double.infinity, borderRadius: 12),
+      )
           : viewModel.errorMessage != null
           ? _ErrorMessage(
-          message: viewModel.errorMessage!, onRetry: viewModel.refreshData)
+        message: viewModel.errorMessage!,
+        onRetry: viewModel.refreshData,
+      )
           : viewModel.dailyTip == null
           ? const _EmptyStateMessage(
-          message: 'No tip available today.', height: 90)
+        message: 'No tip available today.',
+        height: 90,
+      )
           : Card(
         elevation: 0,
         color: colors.surfaceContainer,
@@ -837,19 +972,21 @@ class _DailyTipView extends StatelessWidget {
 }
 
 //==============================================================================
-// Reusable Display Cards (Unchanged)
+// Reusable Display Cards
 //==============================================================================
+
 class _QuestionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String uploadDate;
   final List<Color> gradientColors;
 
-  const _QuestionCard(
-      {required this.title,
-        required this.subtitle,
-        required this.uploadDate,
-        required this.gradientColors});
+  const _QuestionCard({
+    required this.title,
+    required this.subtitle,
+    required this.uploadDate,
+    required this.gradientColors,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -860,31 +997,37 @@ class _QuestionCard extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16.0),
         gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight),
+          colors: gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         boxShadow: [
           BoxShadow(
-              color: gradientColors.first.withOpacity(0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
+            color: gradientColors.first.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title,
-              style: textTheme.titleMedium,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis),
+          Text(
+            title,
+            style: textTheme.titleMedium,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(subtitle,
-                  style: textTheme.bodySmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                subtitle,
+                style: textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               const SizedBox(height: 4),
               Text(uploadDate, style: textTheme.bodySmall),
             ],
@@ -898,6 +1041,7 @@ class _QuestionCard extends StatelessWidget {
 class _StudyPlanCard extends StatelessWidget {
   final List<Task> tasks;
   const _StudyPlanCard({required this.tasks});
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -913,11 +1057,10 @@ class _StudyPlanCard extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-                hasTasks
-                    ? Icons.checklist_rtl_rounded
-                    : Icons.add_task_rounded,
-                color: colors.secondary,
-                size: 32),
+              hasTasks ? Icons.checklist_rtl_rounded : Icons.add_task_rounded,
+              color: colors.secondary,
+              size: 32,
+            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -954,65 +1097,14 @@ class _StudyPlanCard extends StatelessWidget {
 }
 
 //==============================================================================
-// Helper Widgets (Unchanged)
+// Helper Widgets
 //==============================================================================
-class _SkeletonLoader extends StatelessWidget {
-  final double height;
-  final double width;
-  final double borderRadius;
-  final bool isCircle;
-  const _SkeletonLoader(
-      {this.height = 20,
-        this.width = 200,
-        this.borderRadius = 12.0,
-        this.isCircle = false});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: height,
-      width: width,
-      decoration: BoxDecoration(
-        color: Colors.grey.shade300,
-        borderRadius: isCircle ? null : BorderRadius.circular(borderRadius),
-        shape: isCircle ? BoxShape.circle : BoxShape.rectangle,
-      ),
-    );
-  }
-}
-
-class _HorizontalListSkeleton extends StatelessWidget {
-  final int count;
-  final double itemWidth;
-  final double height;
-  final double spacing;
-  const _HorizontalListSkeleton(
-      {this.count = 3,
-        required this.itemWidth,
-        required this.height,
-        this.spacing = 16.0});
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        itemCount: count,
-        itemBuilder: (context, index) => Padding(
-          padding: EdgeInsets.only(right: spacing),
-          child: _SkeletonLoader(
-              height: height, width: itemWidth, borderRadius: 16),
-        ),
-      ),
-    );
-  }
-}
 
 class _ErrorMessage extends StatelessWidget {
   final String message;
   final VoidCallback? onRetry;
   const _ErrorMessage({required this.message, this.onRetry});
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -1024,22 +1116,27 @@ class _ErrorMessage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded,
-                color: colors.onErrorContainer, size: 32),
+            Icon(
+              Icons.error_outline_rounded,
+              color: colors.onErrorContainer,
+              size: 32,
+            ),
             const SizedBox(height: 12.0),
-            Text(message,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyLarge
-                    ?.copyWith(color: colors.onErrorContainer),
-                textAlign: TextAlign.center),
+            Text(
+              message,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: colors.onErrorContainer,
+              ),
+              textAlign: TextAlign.center,
+            ),
             if (onRetry != null) ...[
               const SizedBox(height: 16.0),
               ElevatedButton.icon(
                 onPressed: onRetry,
                 style: ElevatedButton.styleFrom(
-                    backgroundColor: colors.error,
-                    foregroundColor: colors.onError),
+                  backgroundColor: colors.error,
+                  foregroundColor: colors.onError,
+                ),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Retry'),
               ),
@@ -1055,8 +1152,12 @@ class _EmptyStateMessage extends StatelessWidget {
   final String message;
   final double height;
   final IconData? icon;
-  const _EmptyStateMessage(
-      {required this.message, required this.height, this.icon});
+  const _EmptyStateMessage({
+    required this.message,
+    required this.height,
+    this.icon,
+  });
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -1075,12 +1176,13 @@ class _EmptyStateMessage extends StatelessWidget {
               Icon(icon, size: 32, color: colors.onSurfaceVariant),
               const SizedBox(height: 8),
             ],
-            Text(message,
-                textAlign: TextAlign.center,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: colors.onSurfaceVariant)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
@@ -1089,11 +1191,9 @@ class _EmptyStateMessage extends StatelessWidget {
 }
 
 //==============================================================================
-// Updated ClickableAvatar Widget
+// ClickableAvatar Widget
 //==============================================================================
 
-/// A reusable avatar widget that is clickable and displays a user's profile
-/// picture or their initials as a fallback.
 class ClickableAvatar extends StatelessWidget {
   final String? profilePictureUrl;
   final String userName;
@@ -1140,12 +1240,10 @@ class ClickableAvatar extends StatelessWidget {
               fit: BoxFit.cover,
               width: radius * 2,
               height: radius * 2,
-              // Show fallback avatar while loading as a placeholder
               loadingBuilder: (context, child, loadingProgress) {
                 if (loadingProgress == null) return child;
                 return _buildFallbackAvatar(theme);
               },
-              // Show fallback avatar if the image fails to load
               errorBuilder: (context, error, stackTrace) {
                 return _buildFallbackAvatar(theme);
               },
@@ -1181,4 +1279,3 @@ class ClickableAvatar extends StatelessWidget {
     }
   }
 }
-

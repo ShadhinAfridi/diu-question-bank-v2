@@ -20,17 +20,23 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'viewmodels/notifications_viewmodel.dart';
 import 'models/notification_model.dart';
+// Caching services
+import 'services/cache_manager.dart';
+import 'services/connectivity_service.dart';
+import 'repositories/question_cache_repository.dart';
+import 'viewmodels/cached_question_viewmodel.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   await MobileAds.instance.initialize();
+
   // Initialize Hive and register adapters
   await Hive.initFlutter();
   registerHiveAdapters();
 
-  // Initialize Firebase.
+  // Initialize Firebase
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final notificationService = NotificationService();
@@ -43,28 +49,52 @@ void main() async {
   await Hive.openBox<Question>('questions');
   await Hive.openBox<SliderItem>('slider_items');
   await Hive.openBox<Task>('tasks');
-  // FIX: Open the 'form_cache' box used by the UploadViewModel.
   await Hive.openBox('form_cache');
   await Hive.openBox<AppNotification>('notifications');
+  await Hive.openBox('sync_times'); // For cache management
 
-  // Remove the splash screen now that initialization is complete.
+  // Remove the splash screen
   FlutterNativeSplash.remove();
 
-
   runApp(
-    // Use MultiProvider to make all your ViewModels available
-    // to the entire widget tree.
     MultiProvider(
       providers: [
+        // Core services (lazy initialization)
+        ChangeNotifierProvider<ConnectivityService>(
+          create: (_) => ConnectivityService(),
+          lazy: false, // Initialize immediately
+        ),
+        ChangeNotifierProvider<CacheManager>(
+          create: (_) => CacheManager(),
+          lazy: false, // Initialize immediately
+        ),
+
+        // Existing ViewModels
         ChangeNotifierProvider(create: (_) => AuthViewModel()),
         ChangeNotifierProvider(create: (_) => HomeViewModel()),
         ChangeNotifierProvider(create: (_) => UploadViewModel()),
         ChangeNotifierProvider(create: (_) => TaskManagerViewModel()),
-        // Add this line to provide the missing ViewModel
         ChangeNotifierProvider(create: (_) => UnifiedNotificationViewModel()),
+
+        // Caching repositories and ViewModels
+        ProxyProvider<HomeViewModel, QuestionCacheRepository>(
+          create: (context) => QuestionCacheRepository(
+            userDepartmentId: context.read<HomeViewModel>().userDepartmentId,
+          ),
+          update: (context, homeViewModel, repository) =>
+          repository ?? QuestionCacheRepository(
+            userDepartmentId: homeViewModel.userDepartmentId,
+          ),
+        ),
+        ChangeNotifierProxyProvider<QuestionCacheRepository, CachedQuestionViewModel>(
+          create: (context) => CachedQuestionViewModel(
+            repository: context.read<QuestionCacheRepository>(),
+          ),
+          update: (context, repository, previous) =>
+          previous ?? CachedQuestionViewModel(repository: repository!),
+        ),
       ],
       child: const MyApp(),
     ),
   );
 }
-

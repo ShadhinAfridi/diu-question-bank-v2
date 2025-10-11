@@ -5,10 +5,9 @@ import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../viewmodels/home_viewmodel.dart';
 import '../../viewmodels/course_viewmodel.dart';
-import '../../models/question_model.dart';
+import 'course_folder_item.dart';
 import '../ads/ads_model.dart';
 import '../ads/banner_ad_item.dart';
-import 'course_folder_item.dart';
 
 class QuestionScreen extends StatefulWidget {
   const QuestionScreen({super.key});
@@ -25,31 +24,45 @@ class _QuestionScreenState extends State<QuestionScreen> {
   double _elevation = 0;
   late final CourseViewModel _viewModel;
 
-  // --- Ad Implementation Start ---
+  // --- Ad Implementation ---
   String? _bannerAdId;
-  // --- Ad Implementation End ---
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize the ViewModel immediately with the required department ID.
+    // context.read is used here as it's a one-time read and doesn't set up a listener.
     final userDepartmentId = context.read<HomeViewModel>().userDepartmentId;
     _viewModel = CourseViewModel(userDepartmentId: userDepartmentId);
+
     _scrollController.addListener(_scrollListener);
-    _loadAdId(); // Load the ad ID
+    _loadAdId();
+
+    // Defer the initial data fetching until after the first frame is built.
+    // This prevents the "setState() called during build" error.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        // It's now safe to fetch data, which will trigger notifyListeners.
+        _viewModel.refreshCourses();
+      }
+    });
   }
 
-  // --- Ad Implementation Start ---
   /// Fetches the banner ad ID from the AdsModel.
   void _loadAdId() async {
-    final adsModel = AdsModel();
-    final adIds = await adsModel.getAdIds();
-    if (adIds != null && mounted) {
-      setState(() {
-        _bannerAdId = adIds.bannerAdId;
-      });
+    try {
+      final adsModel = AdsModel();
+      final adIds = await adsModel.getAdIds();
+      if (adIds != null && mounted) {
+        setState(() {
+          _bannerAdId = adIds.bannerAdId;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load ad ID: $e');
     }
   }
-  // --- Ad Implementation End ---
 
   @override
   void dispose() {
@@ -61,10 +74,9 @@ class _QuestionScreenState extends State<QuestionScreen> {
   }
 
   void _scrollListener() {
-    if (_scrollController.offset > 10 && _elevation == 0) {
-      setState(() => _elevation = 1);
-    } else if (_scrollController.offset <= 10 && _elevation == 1) {
-      setState(() => _elevation = 0);
+    final newElevation = _scrollController.offset > 10 ? 1.0 : 0.0;
+    if (newElevation != _elevation && mounted) {
+      setState(() => _elevation = newElevation);
     }
   }
 
@@ -81,7 +93,9 @@ class _QuestionScreenState extends State<QuestionScreen> {
   void _onSearchChanged(String query) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      _viewModel.searchCourses(query);
+      if (mounted) {
+        _viewModel.searchCourses(query);
+      }
     });
   }
 
@@ -102,16 +116,29 @@ class _QuestionScreenState extends State<QuestionScreen> {
                       controller: _scrollController,
                       headerSliverBuilder: (context, innerBoxIsScrolled) => [
                         SliverAppBar(
-                          title: _showSearchBar ? _buildSearchField() : const Text('Question Bank'),
+                          title: _showSearchBar
+                              ? _buildSearchField()
+                              : const Text(
+                            'Question Bank',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           pinned: true,
                           floating: true,
                           elevation: _elevation,
                           forceElevated: innerBoxIsScrolled,
-                          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                          surfaceTintColor: Theme.of(context).scaffoldBackgroundColor,
+                          backgroundColor:
+                          Theme.of(context).scaffoldBackgroundColor,
+                          surfaceTintColor:
+                          Theme.of(context).scaffoldBackgroundColor,
                           actions: [
                             IconButton(
-                              icon: Icon(_showSearchBar ? Icons.close : Icons.search),
+                              icon: Icon(
+                                _showSearchBar ? Icons.close : Icons.search,
+                                color:
+                                Theme.of(context).colorScheme.onBackground,
+                              ),
                               onPressed: _toggleSearch,
                             ),
                           ],
@@ -142,9 +169,15 @@ class _QuestionScreenState extends State<QuestionScreen> {
     controller: _searchController,
     autofocus: true,
     onChanged: _onSearchChanged,
-    decoration: const InputDecoration(
+    decoration: InputDecoration(
       hintText: 'Search courses...',
       border: InputBorder.none,
+      hintStyle: TextStyle(
+        color: Theme.of(context).hintColor,
+      ),
+    ),
+    style: TextStyle(
+      color: Theme.of(context).colorScheme.onBackground,
     ),
   );
 
@@ -152,17 +185,19 @@ class _QuestionScreenState extends State<QuestionScreen> {
     if (viewModel.isLoading && viewModel.filteredCourses.isEmpty) {
       return _buildShimmerLoading();
     }
+
     if (viewModel.errorMessage != null) {
-      return Center(child: Text(viewModel.errorMessage!));
+      return _buildErrorState(viewModel);
     }
+
     if (viewModel.filteredCourses.isEmpty) {
-      return const Center(child: Text('No courses found.'));
+      return _buildEmptyState();
     }
 
     final courses = viewModel.filteredCourses.entries.toList();
 
     return RefreshIndicator(
-      onRefresh: viewModel.refreshCourses,
+      onRefresh: () => viewModel.refreshCourses(),
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: courses.length,
@@ -188,12 +223,84 @@ class _QuestionScreenState extends State<QuestionScreen> {
         padding: const EdgeInsets.all(16),
         itemCount: 6,
         itemBuilder: (_, __) => Container(
-          height: 150, // Increased height to match CourseFolderItem
+          height: 150,
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20), // Match border radius
+            borderRadius: BorderRadius.circular(20),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState(CourseViewModel viewModel) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              viewModel.errorMessage!,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: viewModel.refreshCourses,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _searchController.text.isEmpty
+                  ? 'No courses available'
+                  : 'No courses found for "${_searchController.text}"',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color:
+                Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 16,
+              ),
+            ),
+            if (_searchController.text.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () {
+                  _searchController.clear();
+                  _viewModel.searchCourses('');
+                },
+                child: const Text('Clear search'),
+              ),
+            ],
+          ],
         ),
       ),
     );

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import './views/home/home_screen.dart';
 import './views/upload/question_upload_screen.dart';
 
-
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -18,11 +17,11 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   late List<AnimationController> _animationControllers;
   late List<Animation<double>> _animations;
 
-  static const List<Widget> _pages = <Widget>[
-    HomeScreen(key: ValueKey('HomeScreen')),
-    QuestionScreen(key: ValueKey('QuestionScreen')),
-    QuestionUploadScreen(key: ValueKey('QuestionUploadScreen')),
-    TaskManagerScreen(key: ValueKey('TaskManagerScreen')),
+  static final List<Widget> _pages = <Widget>[
+    const HomeScreen(key: ValueKey('HomeScreen')),
+    const QuestionScreen(key: ValueKey('QuestionScreen')),
+    const QuestionUploadScreen(key: ValueKey('QuestionUploadScreen')),
+    const TaskManagerScreen(key: ValueKey('TaskManagerScreen')),
   ];
 
   @override
@@ -60,6 +59,8 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   }
 
   void _onItemTapped(int index) {
+    if (index == _selectedIndex) return;
+
     // Reverse previous animation
     _animationControllers[_selectedIndex].reverse();
 
@@ -86,7 +87,6 @@ class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
         },
         child: _pages[_selectedIndex],
       ),
-      // This is the new, conditional FloatingActionButton
       bottomNavigationBar: _SmartBottomNavBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
@@ -112,28 +112,24 @@ class _SmartBottomNavBar extends StatelessWidget {
     return BottomNavigationBar(
       items: [
         _buildNavItem(
-          context,
           icon: Icons.home_outlined,
           activeIcon: Icons.home,
           label: 'Home',
           index: 0,
         ),
         _buildNavItem(
-          context,
           icon: Icons.quiz_outlined,
           activeIcon: Icons.quiz,
           label: 'Question',
           index: 1,
         ),
         _buildNavItem(
-          context,
           icon: Icons.upload_outlined,
           activeIcon: Icons.upload,
           label: 'Upload',
           index: 2,
         ),
         _buildNavItem(
-          context,
           icon: Icons.schedule_outlined,
           activeIcon: Icons.schedule,
           label: 'Study Plan',
@@ -149,13 +145,12 @@ class _SmartBottomNavBar extends StatelessWidget {
     );
   }
 
-  BottomNavigationBarItem _buildNavItem(
-      BuildContext context, {
-        required IconData icon,
-        required IconData activeIcon,
-        required String label,
-        required int index,
-      }) {
+  BottomNavigationBarItem _buildNavItem({
+    required IconData icon,
+    required IconData activeIcon,
+    required String label,
+    required int index,
+  }) {
     return BottomNavigationBarItem(
       icon: ScaleTransition(
         scale: animations[index],

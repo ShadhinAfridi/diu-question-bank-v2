@@ -34,6 +34,7 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
 
   // --- Ad Implementation Start ---
   String? _bannerAdId;
+  bool _isAdLoaded = false;
   // --- Ad Implementation End ---
 
   @override
@@ -41,18 +42,31 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
     super.initState();
     _viewModel = QuestionListViewModel(questions: widget.questions);
     _scrollController.addListener(_scrollListener);
-    _loadAdId(); // Load the ad ID
+    // Delay ad loading to avoid build conflicts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadAdId();
+    });
   }
 
   // --- Ad Implementation Start ---
   /// Fetches the banner ad ID from the AdsModel.
   void _loadAdId() async {
-    final adsModel = AdsModel();
-    final adIds = await adsModel.getAdIds();
-    if (adIds != null && mounted) {
-      setState(() {
-        _bannerAdId = adIds.bannerAdId;
-      });
+    try {
+      final adsModel = AdsModel();
+      final adIds = await adsModel.getAdIds();
+      if (adIds != null && mounted) {
+        setState(() {
+          _bannerAdId = adIds.bannerAdId;
+          _isAdLoaded = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load ad ID: $e');
+      if (mounted) {
+        setState(() {
+          _isAdLoaded = true;
+        });
+      }
     }
   }
   // --- Ad Implementation End ---
@@ -62,31 +76,35 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
     _searchController.dispose();
     _searchDebounce?.cancel();
     _scrollController.dispose();
+    _viewModel.dispose();
     super.dispose();
   }
 
   void _scrollListener() {
-    if (_scrollController.offset > 10 && _elevation == 0) {
-      setState(() => _elevation = 1);
-    } else if (_scrollController.offset <= 10 && _elevation == 1) {
-      setState(() => _elevation = 0);
+    final newElevation = _scrollController.offset > 10 ? 1.0 : 0.0;
+    if (newElevation != _elevation && mounted) {
+      setState(() => _elevation = newElevation);
     }
   }
 
   void _toggleSearch() {
-    setState(() {
-      _showSearchBar = !_showSearchBar;
-      if (!_showSearchBar) {
-        _searchController.clear();
-        _viewModel.searchQuestions('');
-      }
-    });
+    if (mounted) {
+      setState(() {
+        _showSearchBar = !_showSearchBar;
+        if (!_showSearchBar) {
+          _searchController.clear();
+          _viewModel.searchQuestions('');
+        }
+      });
+    }
   }
 
   void _onSearchChanged(String query) {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-      _viewModel.searchQuestions(query);
+      if (mounted) {
+        _viewModel.searchQuestions(query);
+      }
     });
   }
 
@@ -107,7 +125,14 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
                       controller: _scrollController,
                       headerSliverBuilder: (context, innerBoxIsScrolled) => [
                         SliverAppBar(
-                          title: _showSearchBar ? _buildSearchField() : Text(widget.courseName),
+                          title: _showSearchBar
+                              ? _buildSearchField()
+                              : Text(
+                            widget.courseName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           pinned: true,
                           floating: true,
                           elevation: _elevation,
@@ -116,7 +141,10 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
                           surfaceTintColor: Theme.of(context).scaffoldBackgroundColor,
                           actions: [
                             IconButton(
-                              icon: Icon(_showSearchBar ? Icons.close : Icons.search),
+                              icon: Icon(
+                                _showSearchBar ? Icons.close : Icons.search,
+                                color: Theme.of(context).colorScheme.onBackground,
+                              ),
                               onPressed: _toggleSearch,
                             ),
                           ],
@@ -131,8 +159,8 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
                       body: _buildBody(viewModel),
                     ),
                   ),
-                  // Fixed banner ad at bottom
-                  if (_bannerAdId != null)
+                  // Fixed banner ad at bottom - only show after ad is loaded
+                  if (_isAdLoaded && _bannerAdId != null)
                     SafeArea(
                       top: false,
                       child: Padding(
@@ -153,14 +181,19 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
     controller: _searchController,
     autofocus: true,
     onChanged: _onSearchChanged,
-    decoration: const InputDecoration(
+    decoration: InputDecoration(
       hintText: 'Search within course...',
       border: InputBorder.none,
+      hintStyle: TextStyle(
+        color: Theme.of(context).hintColor,
+      ),
+    ),
+    style: TextStyle(
+      color: Theme.of(context).colorScheme.onBackground,
     ),
   );
 
   Widget _buildFilterSection(QuestionListViewModel viewModel) {
-    // Only show Midterm and Final options
     final filteredExamTypes = [QuestionFilter.midterm, QuestionFilter.finalExam];
 
     return Container(
@@ -192,7 +225,7 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
 
   Widget _buildBody(QuestionListViewModel viewModel) {
     if (viewModel.filteredQuestions.isEmpty) {
-      return const Center(child: Text('No questions found.'));
+      return _buildEmptyState();
     }
 
     return AnimationLimiter(
@@ -216,6 +249,44 @@ class _QuestionListScreenState extends State<QuestionListScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.search_off_rounded,
+              size: 64,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _searchController.text.isEmpty
+                  ? 'No questions available'
+                  : 'No questions found for "${_searchController.text}"',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ),
+            if (_searchController.text.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () {
+                  _searchController.clear();
+                  _viewModel.searchQuestions('');
+                },
+                child: const Text('Clear search'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

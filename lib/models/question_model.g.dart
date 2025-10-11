@@ -26,13 +26,15 @@ class QuestionAdapter extends TypeAdapter<Question> {
       pdfUrl: fields[6] as String,
       semester: fields[7] as String,
       processedAt: fields[8] as Timestamp,
+      cacheUpdatedAt: fields[9] as DateTime?,
+      version: fields[10] as int,
     );
   }
 
   @override
   void write(BinaryWriter writer, Question obj) {
     writer
-      ..writeByte(9)
+      ..writeByte(11)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -50,7 +52,11 @@ class QuestionAdapter extends TypeAdapter<Question> {
       ..writeByte(7)
       ..write(obj.semester)
       ..writeByte(8)
-      ..write(obj.processedAt);
+      ..write(obj.processedAt)
+      ..writeByte(9)
+      ..write(obj.cacheUpdatedAt)
+      ..writeByte(10)
+      ..write(obj.version);
   }
 
   @override

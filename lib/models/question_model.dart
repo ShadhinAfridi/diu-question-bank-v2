@@ -1,6 +1,6 @@
-// question_model.dart
-import 'package:hive/hive.dart';
+// models/question_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 
 part 'question_model.g.dart';
@@ -34,6 +34,13 @@ class Question {
   @HiveField(8)
   final Timestamp processedAt;
 
+  // NEW: Fields for caching support
+  @HiveField(9)
+  final DateTime? cacheUpdatedAt;
+
+  @HiveField(10)
+  final int version; // For conflict resolution
+
   Question({
     required this.id,
     required this.courseCode,
@@ -44,6 +51,8 @@ class Question {
     required this.pdfUrl,
     required this.semester,
     required this.processedAt,
+    this.cacheUpdatedAt,
+    this.version = 1,
   });
 
   factory Question.fromFirestore(DocumentSnapshot doc) {
@@ -58,6 +67,8 @@ class Question {
       pdfUrl: data['pdfUrl'] ?? '',
       semester: data['semester'] ?? '',
       processedAt: data['processedAt'] ?? Timestamp.now(),
+      cacheUpdatedAt: DateTime.now(),
+      version: (data['version'] ?? 1) as int,
     );
   }
 
@@ -72,6 +83,10 @@ class Question {
       pdfUrl: json['pdfUrl'],
       semester: json['semester'],
       processedAt: Timestamp.fromMillisecondsSinceEpoch(json['processedAt']),
+      cacheUpdatedAt: json['cacheUpdatedAt'] != null
+          ? DateTime.parse(json['cacheUpdatedAt'])
+          : null,
+      version: json['version'] ?? 1,
     );
   }
 
@@ -85,11 +100,45 @@ class Question {
     'pdfUrl': pdfUrl,
     'semester': semester,
     'processedAt': processedAt.millisecondsSinceEpoch,
+    'cacheUpdatedAt': cacheUpdatedAt?.toIso8601String(),
+    'version': version,
   };
+
+  // Copy with method for updates
+  Question copyWith({
+    String? courseCode,
+    String? courseName,
+    String? department,
+    String? examType,
+    String? examYear,
+    String? pdfUrl,
+    String? semester,
+    Timestamp? processedAt,
+    int? version,
+  }) {
+    return Question(
+      id: id,
+      courseCode: courseCode ?? this.courseCode,
+      courseName: courseName ?? this.courseName,
+      department: department ?? this.department,
+      examType: examType ?? this.examType,
+      examYear: examYear ?? this.examYear,
+      pdfUrl: pdfUrl ?? this.pdfUrl,
+      semester: semester ?? this.semester,
+      processedAt: processedAt ?? this.processedAt,
+      cacheUpdatedAt: DateTime.now(),
+      version: version ?? this.version + 1,
+    );
+  }
 
   String get formattedDate {
     return DateFormat('dd MMM, yyyy').format(processedAt.toDate());
   }
 
   String get examIdentifier => '$examType $examYear';
+
+  // For caching comparison
+  bool isNewerThan(Question other) {
+    return version > other.version;
+  }
 }
