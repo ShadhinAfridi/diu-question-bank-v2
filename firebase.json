@@ -1,0 +1,22 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "questionbank-diu",
+          "appId": "1:198178672858:android:29aa6599c8cb03d372d5e3",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "questionbank-diu",
+          "configurations": {
+            "android": "1:198178672858:android:29aa6599c8cb03d372d5e3",
+            "ios": "1:198178672858:ios:d7f6e53cc89646ae72d5e3"
+          }
+        }
+      }
+    }
+  }
+}

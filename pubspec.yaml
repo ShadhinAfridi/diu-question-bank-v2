@@ -1,0 +1,129 @@
+name: diuquestionbank
+description: "DIU Question Bank"
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# In Android, build-name is used as versionName while build-number used as versionCode.
+# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
+# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
+# Read more about iOS versioning at
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+# In Windows, build-name is used as the major, minor, and patch parts
+# of the product and file versions while build-number is used as the build suffix.
+version: 1.0.5+44
+
+environment:
+  sdk: ^3.8.1
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  cloud_firestore: ^6.0.0
+  firebase_database: ^12.0.0
+  intl: ^0.20.2
+  provider: ^6.1.5
+  firebase_storage: ^13.0.0
+  file_picker: ^10.2.1
+  image_picker: ^1.1.2
+  pdf: ^3.11.3
+  path_provider: ^2.1.5
+  uuid: ^4.5.1
+  flutter_image_compress: ^2.4.0
+  printing: ^5.9.1
+  dio: ^5.3.2
+  google_fonts: ^6.3.0
+  url_launcher: ^6.3.2
+  flutter_native_splash: ^2.4.6
+  sqflite: ^2.4.2
+  flutter_svg: ^2.2.0
+  animations: ^2.0.11
+  flutter_local_notifications: ^19.4.0
+  android_alarm_manager_plus: ^4.0.7
+  syncfusion_flutter_calendar: ^30.1.42
+  shimmer: ^3.0.0
+  flutter_staggered_animations: ^1.1.1
+  shared_preferences: ^2.5.3
+  pdfx: ^2.0.1
+  share_plus: ^11.0.0
+  carousel_slider: ^5.1.1
+  cached_network_image: ^3.4.1
+
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  build_runner: 2.4.13
+  hive_generator: ^2.0.1
+
+  google_mobile_ads: ^6.0.0
+
+  flutter_launcher_icons: ^0.14.4
+  connectivity_plus: ^6.1.5
+  timeago: ^3.7.1
+  logger: ^2.6.2
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter_icons:
+  image_path: assets/images/app_logo.png
+  android: true
+  ios: true
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/images/
+
+
+flutter_native_splash:
+  # The background color for your splash screen.
+  color: "#FFFFFF" # White
+  # The background color for dark mode.
+  color_dark: "#121212" # A dark grey
+
+  # You can specify an image to show in the center of the splash screen.
+  # 1. Create an 'assets' folder at the root of your project.
+  # 2. Place your icon (e.g., 'splash_icon.png') inside it.
+  # 3. Uncomment the line below and make sure the path is correct.
+  # image: assets/splash_icon.png
+
+  # To show different icons for light and dark modes, you can use image_dark.
+  # image_dark: assets/splash_icon_dark.png
+
+  android: true
+  ios: true
