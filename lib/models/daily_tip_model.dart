@@ -1,10 +1,12 @@
-// daily_tip_model.dart
+// daily_tip_model.dart - Updated
 import 'package:hive/hive.dart';
+// --- FIX: Standardized import path ---
+import 'package:diuquestionbank/constants/hive_type_ids.dart';
 
 part 'daily_tip_model.g.dart';
 
-@HiveType(typeId: 1)
-class DailyTip {
+@HiveType(typeId: kDailyTipTypeId)
+class DailyTip extends HiveObject {
   @HiveField(0)
   final String text;
 

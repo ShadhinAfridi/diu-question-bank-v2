@@ -1,100 +1,121 @@
-import 'package:diuquestionbank/models/course_model.dart';
-import 'package:diuquestionbank/models/daily_tip_model.dart';
-import 'package:diuquestionbank/models/department_model.dart';
-import 'package:diuquestionbank/models/question_model.dart';
-import 'package:diuquestionbank/models/slider_model.dart';
-import 'package:diuquestionbank/models/task_model.dart';
-import 'package:diuquestionbank/services/notification_service.dart';
+// main.dart - Enhanced version
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:hive_flutter/hive_flutter.dart';
-import 'package:provider/provider.dart';
-import 'app.dart';
-import 'data/local/hive_adapters.dart';
-import 'firebase_options.dart';
-import 'viewmodels/auth_viewmodel.dart';
-import 'viewmodels/home_viewmodel.dart';
-import 'viewmodels/question_upload_viewmodel.dart';
-import 'viewmodels/task_manager_viewmodel.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'viewmodels/notifications_viewmodel.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+
+// Import your models and adapters for Hive
+import 'data/local/hive_adapters.dart';
+import 'models/point_transaction_model.dart';
+import 'models/question_model.dart';
+import 'models/slider_model.dart';
+import 'models/subscription_model.dart';
+import 'models/task_model.dart';
+import 'models/user_model.dart';
 import 'models/notification_model.dart';
-// Caching services
-import 'services/cache_manager.dart';
-import 'services/connectivity_service.dart';
-import 'repositories/question_cache_repository.dart';
-import 'viewmodels/cached_question_viewmodel.dart';
+
+import 'app.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  await MobileAds.instance.initialize();
+  // Initialize core components
+  await _initializeApp();
 
-  // Initialize Hive and register adapters
-  await Hive.initFlutter();
-  registerHiveAdapters();
-
-  // Initialize Firebase
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  final notificationService = NotificationService();
-  await notificationService.initialize();
-
-  // Open Hive boxes
-  await Hive.openBox<Course>('courses');
-  await Hive.openBox<DailyTip>('daily_tips');
-  await Hive.openBox<Department>('departments');
-  await Hive.openBox<Question>('questions');
-  await Hive.openBox<SliderItem>('slider_items');
-  await Hive.openBox<Task>('tasks');
-  await Hive.openBox('form_cache');
-  await Hive.openBox<AppNotification>('notifications');
-  await Hive.openBox('sync_times'); // For cache management
-
-  // Remove the splash screen
   FlutterNativeSplash.remove();
 
   runApp(
-    MultiProvider(
-      providers: [
-        // Core services (lazy initialization)
-        ChangeNotifierProvider<ConnectivityService>(
-          create: (_) => ConnectivityService(),
-          lazy: false, // Initialize immediately
-        ),
-        ChangeNotifierProvider<CacheManager>(
-          create: (_) => CacheManager(),
-          lazy: false, // Initialize immediately
-        ),
-
-        // Existing ViewModels
-        ChangeNotifierProvider(create: (_) => AuthViewModel()),
-        ChangeNotifierProvider(create: (_) => HomeViewModel()),
-        ChangeNotifierProvider(create: (_) => UploadViewModel()),
-        ChangeNotifierProvider(create: (_) => TaskManagerViewModel()),
-        ChangeNotifierProvider(create: (_) => UnifiedNotificationViewModel()),
-
-        // Caching repositories and ViewModels
-        ProxyProvider<HomeViewModel, QuestionCacheRepository>(
-          create: (context) => QuestionCacheRepository(
-            userDepartmentId: context.read<HomeViewModel>().userDepartmentId,
-          ),
-          update: (context, homeViewModel, repository) =>
-          repository ?? QuestionCacheRepository(
-            userDepartmentId: homeViewModel.userDepartmentId,
-          ),
-        ),
-        ChangeNotifierProxyProvider<QuestionCacheRepository, CachedQuestionViewModel>(
-          create: (context) => CachedQuestionViewModel(
-            repository: context.read<QuestionCacheRepository>(),
-          ),
-          update: (context, repository, previous) =>
-          previous ?? CachedQuestionViewModel(repository: repository!),
-        ),
-      ],
-      child: const MyApp(),
+    const ProviderScope(
+      child: MyApp(),
     ),
   );
+}
+
+Future<void> _initializeApp() async {
+  try {
+    debugPrint('App: Initializing Firebase...');
+    // Firebase
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    debugPrint('App: Initializing Mobile Ads...');
+    // Mobile Ads
+    await MobileAds.instance.initialize();
+
+    debugPrint('App: Initializing Hive...');
+    // Initialize Hive
+    await _initializeHive();
+
+    debugPrint('App: All initializations complete');
+  } catch (e, st) {
+    debugPrint('App: Error during initialization: $e\n$st');
+    rethrow;
+  }
+}
+
+Future<void> _initializeHive() async {
+  try {
+    final appDocumentDir = await getApplicationDocumentsDirectory();
+    await Hive.initFlutter(appDocumentDir.path);
+
+    // Register all adapters
+    registerHiveAdapters();
+
+    // Safe box opening with retry logic
+    Future<Box<T>> openBoxSafely<T>(String name) async {
+      try {
+        final box = await Hive.openBox<T>(name);
+        debugPrint('Hive: Successfully opened box $name with ${box.keys.length} keys');
+        return box;
+      } catch (e, st) {
+        debugPrint('Hive: ERROR opening box $name: $e');
+        debugPrint('Stack trace: $st');
+
+        // Try to delete and recreate the box if it's corrupted
+        try {
+          await Hive.deleteBoxFromDisk(name);
+          debugPrint('Hive: Deleted corrupted box $name');
+
+          final newBox = await Hive.openBox<T>(name);
+          debugPrint('Hive: Recreated box $name successfully');
+          return newBox;
+        } catch (e2) {
+          debugPrint('Hive: Failed to recreate box $name: $e2');
+          rethrow;
+        }
+      }
+    }
+
+    // Open all boxes
+    await Future.wait([
+      openBoxSafely<Question>('questions_v3'),
+      openBoxSafely<PointTransaction>('point_transactions_v3'),
+      openBoxSafely<UserModel>('users_v3'),
+      openBoxSafely<SliderItem>('sliders_v3'),
+      openBoxSafely<Subscription>('subscriptions_v3'),
+      openBoxSafely<Task>('tasks_v3'),
+      openBoxSafely('form_cache_v3'),
+      openBoxSafely('app_meta_v3'),
+      openBoxSafely<NotificationSettings>('notification_settings_v3'),
+      openBoxSafely<AppNotification>('notification_history_v3'),
+    ]);
+
+    // Verify all boxes are working
+    final metaBox = Hive.box('app_meta_v3');
+    debugPrint('Hive: Meta box contains: ${metaBox.keys}');
+
+    final userBox = Hive.box<UserModel>('users_v3');
+    debugPrint('Hive: User box contains ${userBox.keys.length} users');
+
+    debugPrint('App: Hive initialized successfully');
+  } catch (e, st) {
+    debugPrint('App: CRITICAL ERROR during Hive initialization: $e\n$st');
+    rethrow;
+  }
 }

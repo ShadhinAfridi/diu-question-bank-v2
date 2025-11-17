@@ -4,29 +4,11 @@ description: "DIU Question Bank"
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
 version: 1.0.5+44
 
 environment:
   sdk: ^3.8.1
 
-# Dependencies specify other packages that your package needs in order to work.
-# To automatically upgrade your package dependencies to the latest versions
-# consider running `flutter pub upgrade --major-versions`. Alternatively,
-# dependencies can be manually updated by changing the version numbers below to
-# the latest version available on pub.dev. To see which dependencies have newer
-# versions available, run `flutter pub outdated`.
 dependencies:
   flutter:
     sdk: flutter
@@ -55,7 +37,6 @@ dependencies:
   sqflite: ^2.4.2
   flutter_svg: ^2.2.0
   animations: ^2.0.11
-  flutter_local_notifications: ^19.4.0
   android_alarm_manager_plus: ^4.0.7
   syncfusion_flutter_calendar: ^30.1.42
   shimmer: ^3.0.0
@@ -68,27 +49,39 @@ dependencies:
 
   hive: ^2.2.3
   hive_flutter: ^1.1.0
-  build_runner: 2.4.13
-  hive_generator: ^2.0.1
 
   google_mobile_ads: ^6.0.0
 
-  flutter_launcher_icons: ^0.14.4
   connectivity_plus: ^6.1.5
   timeago: ^3.7.1
   logger: ^2.6.2
   equatable: ^2.0.7
   workmanager: ^0.9.0+3
+  get_it: ^9.0.5
+
+
+  # MOVED: This is a core dependency and MUST be in this section.
+  # This was the cause of your 'ChangeNotifierProvider' error.
+  flutter_riverpod: ^3.0.3
+
+  go_router: ^17.0.0
+  timezone: ^0.10.1
+
+  flutter_local_notifications: ^19.5.0
 
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
-flutter_icons:
-  image_path: assets/images/app_logo.png
-  android: true
-  ios: true
+  # MOVED: build_runner is a development tool.
+  build_runner: 2.4.13
+
+  # MOVED: hive_generator is a development tool.
+  hive_generator: ^2.0.1
+
+  # MOVED: flutter_launcher_icons is a development tool.
+  flutter_launcher_icons: ^0.14.4
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -127,5 +120,10 @@ flutter_native_splash:
   # To show different icons for light and dark modes, you can use image_dark.
   # image_dark: assets/splash_icon_dark.png
 
+  android: true
+  ios: true
+
+flutter_icons:
+  image_path: assets/images/app_logo.png
   android: true
   ios: true

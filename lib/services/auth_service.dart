@@ -1,8 +1,7 @@
+// auth_service.dart
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
-
-import '../views/auth/signin_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// A custom exception class for handling authentication-related errors.
 class AuthServiceException implements Exception {
@@ -15,7 +14,10 @@ class AuthServiceException implements Exception {
 
 /// A service class that encapsulates Firebase Authentication logic.
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseAuth _auth;
+
+  /// Constructor now takes the FirebaseAuth instance.
+  AuthService(this._auth);
 
   /// A stream that notifies listeners about changes in the user's authentication state.
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -68,22 +70,20 @@ class AuthService {
   }
 
   /// Signs out the current user.
-  /// [context] parameter is required for navigation
-  Future<void> signOut(BuildContext context) async {
-    await Hive.deleteFromDisk();
-    await _auth.signOut();
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const SignInScreen()),
-          (Route<dynamic> route) => false,
-    );
+  Future<void> signOut() async {
+    try {
+      await _auth.signOut();
+    } catch (e) {
+      debugPrint('Error during sign out: $e');
+      rethrow;
+    }
   }
 
-  /// Alternative signOut method without navigation for use in non-UI contexts
-  Future<void> signOutWithoutNavigation() async {
-    await Hive.deleteFromDisk();
-    await _auth.signOut();
-  }
+  /// Get current user
+  User? get currentUser => _auth.currentUser;
+
+  /// Check if user is signed in
+  bool get isSignedIn => _auth.currentUser != null;
 
   /// Maps Firebase authentication error codes to user-friendly messages.
   String _mapAuthErrorCodeToMessage(String code) {
@@ -98,8 +98,11 @@ class AuthService {
         return 'An account already exists for that email.';
       case 'weak-password':
         return 'The password provided is too weak.';
+      case 'network-request-failed':
+        return 'Network error. Please check your internet connection.';
       default:
         return 'An error occurred. Please try again.';
     }
   }
 }
+

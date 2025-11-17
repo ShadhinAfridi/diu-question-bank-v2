@@ -1,184 +1,327 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive/hive.dart';
+
+import '../models/base_model.dart';
+import '../models/point_transaction_model.dart';
+import '../models/question_model.dart';
+import '../models/subscription_model.dart';
+import '../models/task_model.dart';
+import '../models/user_model.dart';
+import '../providers/repository_providers.dart';
+import '../providers/service_providers.dart';
+import '../repositories/interfaces/user_repository.dart';
 import '../services/auth_service.dart';
 
-// The AuthState enum is now simplified to only two possible states.
-enum AuthState { authenticated, unauthenticated }
+class AuthViewModel extends AsyncNotifier<UserModel?> {
+  late final AuthService _authService;
+  late final IUserRepository _userRepository;
+  StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<UserModel?>? _userSubscription;
 
-class AuthViewModel extends ChangeNotifier {
-  // --- Dependencies ---
-  final AuthService _authService = AuthService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-
-  // --- Constants ---
-  static const String _userCollection = 'users';
-  static const int _kResendEmailCooldown = 120; // 2 minutes in seconds
-
-  // --- Private State ---
-  User? _user;
-  bool _isLoading = false;
-  String? _errorMessage;
-  bool _isResendDisabled = false;
-  int _resendTimer = _kResendEmailCooldown;
+  static const int _kResendEmailCooldown = 120;
   Timer? _resendCooldownTimer;
-  // The initial state is now determined directly by the stream.
-  AuthState? _authState;
 
-  // --- Public Getters ---
-  User? get user => _user;
-  bool get isLoading => _isLoading;
-  String? get errorMessage => _errorMessage;
-  bool get isResendDisabled => _isResendDisabled;
-  int get resendTimer => _resendTimer;
-  // The UI will now primarily listen to this state.
-  AuthState? get authState => _authState;
-  // The raw stream is still available if needed elsewhere.
-  Stream<User?> get authStateChanges => _authService.authStateChanges;
-
-  AuthViewModel() {
-    // The view model now directly listens to the auth state stream from Firebase.
-    // This is the single source of truth for the user's authentication status.
-    _authService.authStateChanges.listen((user) {
-      _user = user;
-      // If the user object is null, they are unauthenticated, otherwise authenticated.
-      _authState = user == null ? AuthState.unauthenticated : AuthState.authenticated;
-      // Notify listeners (like the AuthWrapper) to rebuild with the new state.
-      notifyListeners();
-    });
-  }
+  final ValueNotifier<bool> isResendDisabled = ValueNotifier(false);
+  final ValueNotifier<int> resendTimer = ValueNotifier(_kResendEmailCooldown);
 
   @override
-  void dispose() {
-    _resendCooldownTimer?.cancel();
-    super.dispose();
-  }
+  Future<UserModel?> build() async {
+    debugPrint('AuthViewModel: Building...');
 
-  // --- State Mutators (for UI feedback like loading spinners) ---
-  void _setLoading(bool loading) {
-    _isLoading = loading;
-    notifyListeners();
-  }
+    // Initialize services
+    _authService = ref.watch(authServiceProvider);
+    _userRepository = ref.watch(userRepositoryProvider);
 
-  void _setErrorMessage(String? message) {
-    _errorMessage = message;
-    notifyListeners();
-  }
+    // Set up cleanup on provider disposal
+    ref.onDispose(() {
+      _cleanup();
+    });
 
-  void _clearError() {
-    if (_errorMessage != null) {
-      _errorMessage = null;
-      notifyListeners();
+    // Set up auth state listener FIRST
+    _authSubscription = _authService.authStateChanges.listen(_handleAuthStateChange);
+
+    // Return initial user if available - FIXED VERSION
+    try {
+      final currentUser = _authService.currentUser;
+      if (currentUser != null) {
+        debugPrint('AuthViewModel: Found current user: ${currentUser.uid}');
+        final userModel = await _loadUserData(currentUser.uid);
+        debugPrint('AuthViewModel: Initial user data loaded: ${userModel?.email}');
+        return userModel;
+      } else {
+        debugPrint('AuthViewModel: No current user found');
+        return null;
+      }
+    } catch (e, s) {
+      debugPrint('AuthViewModel: Error in build: $e, $s');
+      // Return null instead of throwing to allow app to continue
+      return null;
     }
   }
 
-  void startResendTimer() {
-    _isResendDisabled = true;
-    _resendTimer = _kResendEmailCooldown;
-    notifyListeners();
+  Future<UserModel?> _loadUserData(String userId) async {
+    try {
+      debugPrint('AuthViewModel: Loading user data for $userId');
 
-    _resendCooldownTimer?.cancel();
-    _resendCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_resendTimer > 0) {
-        _resendTimer--;
+      // Try to get user data from cache first, then network
+      final userModel = await _userRepository.get(userId);
+
+      if (userModel != null) {
+        // Update last login and sync with current Firebase user data
+        await _userRepository.updateLastLogin(userId);
+
+        // Sync email verification status from Firebase
+        final firebaseUser = _authService.currentUser;
+        if (firebaseUser != null) {
+          await firebaseUser.reload();
+          final updatedFirebaseUser = _authService.currentUser;
+
+          // If email verification status changed, update the cached user
+          if (userModel.isEmailVerified != (updatedFirebaseUser?.emailVerified ?? false)) {
+            final updatedUser = userModel.copyWith(
+              isEmailVerified: updatedFirebaseUser?.emailVerified ?? false,
+              updatedAt: DateTime.now(),
+              version: userModel.version + 1,
+            );
+
+            await _userRepository.save(updatedUser);
+            debugPrint('AuthViewModel: Updated email verification status in cache: ${updatedUser.isEmailVerified}');
+            return updatedUser;
+          }
+        }
+
+        debugPrint('AuthViewModel: User data loaded successfully: ${userModel.email}');
       } else {
-        _isResendDisabled = false;
-        timer.cancel();
+        debugPrint('AuthViewModel: No user data found for ID: $userId');
       }
-      notifyListeners();
-    });
+      return userModel;
+    } catch (e) {
+      debugPrint('AuthViewModel: Error loading user data: $e');
+      // Don't throw here - return null to allow retry
+      return null;
+    }
   }
 
-  // --- Authentication Logic ---
-  // These methods now primarily handle the business logic and UI feedback (loading/errors),
-  // while the stream listener above handles the actual state change.
+  void _handleAuthStateChange(User? firebaseUser) async {
+    try {
+      if (firebaseUser == null) {
+        debugPrint('AuthViewModel: User signed out - clearing cache');
+        state = const AsyncValue.data(null);
+      } else {
+        debugPrint('AuthViewModel: User signed in, fetching profile: ${firebaseUser.uid}');
+        state = const AsyncValue.loading();
+        final userModel = await _loadUserData(firebaseUser.uid);
+        state = AsyncValue.data(userModel);
+
+        if (userModel != null) {
+          debugPrint('AuthViewModel: Auth state updated - User: ${userModel.email}, Verified: ${userModel.isEmailVerified}');
+        } else {
+          debugPrint('AuthViewModel: Auth state updated - No user data available');
+        }
+      }
+    } catch (e, s) {
+      debugPrint('AuthViewModel: Error in auth state change: $e');
+      // Don't set error state here as it breaks the app
+      // Instead, set to data null to allow app to continue
+      state = const AsyncValue.data(null);
+    }
+  }
 
   Future<void> signIn(String email, String password) async {
-    _clearError();
-    _setLoading(true);
+    debugPrint('AuthViewModel: Signing in with: $email');
+    state = const AsyncValue.loading();
     try {
       await _authService.signInWithEmailAndPassword(email, password);
-    } on AuthServiceException catch (e) {
-      _setErrorMessage(e.message);
-    } catch (e) {
-      _setErrorMessage('An unexpected error occurred. Please try again.');
-    } finally {
-      _setLoading(false);
+      debugPrint('AuthViewModel: Sign in successful');
+      // Auth state listener will handle success and navigation
+    } catch (e, s) {
+      debugPrint('AuthViewModel: Sign in error: $e');
+      state = AsyncValue.error(e, s);
+      rethrow;
     }
   }
 
   Future<void> signUp(String email, String password, String name) async {
-    _clearError();
-    _setLoading(true);
+    debugPrint('AuthViewModel: Signing up: $email');
+    state = const AsyncValue.loading();
     try {
-      final User? newUser = await _authService.createUserWithEmailAndPassword(email, password);
+      final User? newUser = await _authService.createUserWithEmailAndPassword(
+        email,
+        password,
+      );
       if (newUser != null) {
-        await _firestore.collection(_userCollection).doc(newUser.uid).set({
-          'name': name,
-          'email': email,
-          'isVerified': false,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        debugPrint('AuthViewModel: User created: ${newUser.uid}');
+        final userModel = UserModel(
+          id: newUser.uid,
+          email: email,
+          name: name,
+          department: 'cse', // Default department
+          points: 0,
+          uploadedQuestions: [],
+          accessedQuestions: [],
+          preferences: {},
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+          syncStatus: SyncStatus.synced,
+          version: 0,
+          subscription: Subscription.free(),
+          isEmailVerified: false, // Explicitly set verification status
+        );
+
+        // Save user to cache and Firestore
+        await _userRepository.save(userModel);
         await newUser.sendEmailVerification();
-        startResendTimer();
+        _startResendTimer();
+
+        debugPrint('AuthViewModel: User saved to cache and verification email sent');
       }
-    } on AuthServiceException catch (e) {
-      _setErrorMessage(e.message);
-    } catch (e) {
-      _setErrorMessage('An unexpected error occurred. Please try again.');
-    } finally {
-      _setLoading(false);
+    } catch (e, s) {
+      debugPrint('AuthViewModel: Sign up error: $e');
+      state = AsyncValue.error(e, s);
+      rethrow;
     }
   }
 
-  // Updated signOut method to accept a BuildContext parameter
-  Future<void> signOut(BuildContext context) async {
-    await _authService.signOut(context);
-  }
+  Future<void> signOut() async {
+    debugPrint('AuthViewModel: Signing out...');
+    try {
+      // Clear Hive cache for user-specific data
+      await Hive.box<Question>('questions_v3').clear();
+      await Hive.box<PointTransaction>('point_transactions_v3').clear();
+      await Hive.box<Subscription>('subscriptions_v3').clear();
+      await Hive.box<Task>('tasks_v3').clear();
 
-  // Alternative signOut method without navigation
-  Future<void> signOutWithoutNavigation() async {
-    await _authService.signOutWithoutNavigation();
+      debugPrint('AuthViewModel: User-specific cache cleared');
+    } catch (e) {
+      debugPrint('AuthViewModel: Could not clear user cache: $e');
+    }
+
+    await _authService.signOut();
+    debugPrint('AuthViewModel: Signed out from Firebase');
   }
 
   Future<void> resetPassword(String email) async {
-    _clearError();
-    _setLoading(true);
+    debugPrint('AuthViewModel: Resetting password for: $email');
     try {
       await _authService.sendPasswordResetEmail(email);
-    } on AuthServiceException catch (e) {
-      _setErrorMessage(e.message);
-    } catch (e) {
-      _setErrorMessage('An unexpected error occurred. Please try again.');
-    }
-    finally {
-      _setLoading(false);
+      debugPrint('AuthViewModel: Password reset email sent');
+    } catch (e, s) {
+      debugPrint('AuthViewModel: Reset password error: $e');
+      rethrow;
     }
   }
 
   Future<void> checkEmailVerification() async {
-    if (_user == null) return;
-    await _user!.reload();
-    _user = FirebaseAuth.instance.currentUser;
-    if (_user!.emailVerified) {
-      await _firestore.collection(_userCollection).doc(_user!.uid).update({'isVerified': true});
-      notifyListeners();
+    final user = _authService.currentUser;
+    if (user == null) {
+      debugPrint('AuthViewModel: No user for email verification check');
+      return;
+    }
+
+    debugPrint('AuthViewModel: Checking email verification...');
+    await user.reload();
+    final currentUserModel = state.value;
+
+    // Enhanced verification check with cache update
+    if (user.emailVerified == true && currentUserModel != null) {
+      debugPrint('AuthViewModel: Email verified! Updating cache...');
+      final updatedUser = currentUserModel.copyWith(
+        isEmailVerified: true,
+        updatedAt: DateTime.now(),
+        version: currentUserModel.version + 1,
+      );
+
+      state = const AsyncValue.loading();
+      try {
+        await _userRepository.save(updatedUser);
+        state = AsyncValue.data(updatedUser);
+        debugPrint('AuthViewModel: User cache updated with verified email');
+      } catch (e, s) {
+        debugPrint('AuthViewModel: Error updating verified user in cache: $e');
+        state = AsyncValue.error(e, s);
+      }
+    } else {
+      debugPrint('AuthViewModel: Email not verified yet - current status: ${user.emailVerified}');
     }
   }
 
   Future<void> sendVerificationEmail() async {
-    if (_user == null || _isResendDisabled) return;
-    _clearError();
-    _setLoading(true);
+    final user = _authService.currentUser;
+    if (user == null || isResendDisabled.value) return;
+
+    debugPrint('AuthViewModel: Sending verification email...');
     try {
-      await _user!.sendEmailVerification();
-      startResendTimer();
-    } on FirebaseAuthException catch (e) {
-      _setErrorMessage(e.message);
-    } finally {
-      _setLoading(false);
+      await user.sendEmailVerification();
+      _startResendTimer();
+      debugPrint('AuthViewModel: Verification email sent');
+    } on FirebaseAuthException catch (e, s) {
+      debugPrint('AuthViewModel: Send verification email error: $e');
+      rethrow;
     }
+  }
+
+  void _startResendTimer() {
+    isResendDisabled.value = true;
+    resendTimer.value = _kResendEmailCooldown;
+
+    _resendCooldownTimer?.cancel();
+    _resendCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (resendTimer.value > 0) {
+        resendTimer.value--;
+      } else {
+        isResendDisabled.value = false;
+        timer.cancel();
+      }
+    });
+  }
+
+  void _cleanup() {
+    debugPrint('AuthViewModel: Cleaning up...');
+    _authSubscription?.cancel();
+    _userSubscription?.cancel();
+    _resendCooldownTimer?.cancel();
+    isResendDisabled.dispose();
+    resendTimer.dispose();
+  }
+
+  // Enhanced cache management methods
+  Future<void> clearUserCache() async {
+    try {
+      await _userRepository.clearCache();
+      debugPrint('AuthViewModel: User cache cleared');
+    } catch (e) {
+      debugPrint('AuthViewModel: Error clearing user cache: $e');
+    }
+  }
+
+  Future<void> refreshUserData() async {
+    final currentUser = _authService.currentUser;
+    if (currentUser == null) return;
+
+    debugPrint('AuthViewModel: Refreshing user data from network...');
+    state = const AsyncValue.loading();
+    try {
+      final freshUserData = await _loadUserData(currentUser.uid);
+      state = AsyncValue.data(freshUserData);
+      debugPrint('AuthViewModel: User data refreshed successfully');
+    } catch (e, s) {
+      debugPrint('AuthViewModel: Error refreshing user data: $e');
+      state = AsyncValue.error(e, s);
+    }
+  }
+
+  // Helper method to check if user is verified
+  bool get isUserVerified {
+    final user = state.value;
+    return user?.isEmailVerified ?? false;
+  }
+
+  // Helper method to get current user email
+  String? get currentUserEmail {
+    final user = state.value;
+    return user?.email;
   }
 }

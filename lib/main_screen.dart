@@ -1,166 +1,147 @@
-import 'package:animations/animations.dart';
-import 'package:diuquestionbank/views/question/question_screen.dart';
-import 'package:diuquestionbank/views/task_manager/task_manager_screen.dart';
+// main_screen.dart
 import 'package:flutter/material.dart';
-import './views/home/home_screen.dart';
-import './views/upload/question_upload_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+import '../providers/view_model_providers.dart';
+
+class MainScreen extends ConsumerStatefulWidget {
+  final Widget child;
+
+  const MainScreen({super.key, required this.child});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
+class _MainScreenState extends ConsumerState<MainScreen> {
   int _selectedIndex = 0;
-  late List<AnimationController> _animationControllers;
-  late List<Animation<double>> _animations;
-
-  static final List<Widget> _pages = <Widget>[
-    const HomeScreen(key: ValueKey('HomeScreen')),
-    const QuestionScreen(key: ValueKey('QuestionScreen')),
-    const QuestionUploadScreen(key: ValueKey('QuestionUploadScreen')),
-    const TaskManagerScreen(key: ValueKey('TaskManagerScreen')),
-  ];
 
   @override
-  void initState() {
-    super.initState();
-
-    // Initialize animation controllers for each tab
-    _animationControllers = List.generate(
-      _pages.length,
-          (index) => AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 300),
-      ),
-    );
-
-    _animations = _animationControllers.map(
-          (controller) => Tween<double>(begin: 0.9, end: 1.0).animate(
-        CurvedAnimation(
-          parent: controller,
-          curve: Curves.easeOut,
-        ),
-      ),
-    ).toList();
-
-    // Start animation for initial tab
-    _animationControllers[_selectedIndex].forward();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Update the selected index when the route changes
+    _updateSelectedIndexFromRoute();
   }
 
-  @override
-  void dispose() {
-    for (var controller in _animationControllers) {
-      controller.dispose();
+  void _updateSelectedIndexFromRoute() {
+    final location = GoRouterState.of(context).uri.toString();
+    debugPrint('MainScreen: Current route: $location');
+    final newIndex = _getIndexFromRoute(location);
+
+    if (newIndex != _selectedIndex) {
+      setState(() {
+        _selectedIndex = newIndex;
+      });
+      debugPrint('MainScreen: Selected index updated to: $_selectedIndex');
     }
-    super.dispose();
+  }
+
+  int _getIndexFromRoute(String location) {
+    if (location.startsWith('/questions')) return 1;
+    if (location.startsWith('/upload')) return 2;
+    if (location.startsWith('/tasks')) return 3;
+    // Default to home
+    return 0;
   }
 
   void _onItemTapped(int index) {
     if (index == _selectedIndex) return;
 
-    // Reverse previous animation
-    _animationControllers[_selectedIndex].reverse();
+    // This is the only place we navigate from here
+    _navigateToRoute(index);
+  }
 
-    setState(() {
-      _selectedIndex = index;
-    });
-
-    // Start new animation
-    _animationControllers[index].forward();
+  void _navigateToRoute(int index) {
+    final routes = ['/', '/questions', '/upload', '/tasks'];
+    if (index >= 0 && index < routes.length) {
+      context.go(routes[index]);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('MainScreen: Building with user guaranteed');
+
     return Scaffold(
-      body: PageTransitionSwitcher(
-        duration: const Duration(milliseconds: 300),
-        transitionBuilder: (child, primaryAnimation, secondaryAnimation) {
-          return SharedAxisTransition(
-            animation: primaryAnimation,
-            secondaryAnimation: secondaryAnimation,
-            transitionType: SharedAxisTransitionType.horizontal,
-            child: child,
-          );
-        },
-        child: _pages[_selectedIndex],
+      // FIXED: Add error boundary for the dashboard
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Global error banner
+            Consumer(
+              builder: (context, ref, child) {
+                final globalError = ref.watch(globalErrorProvider);
+
+                if (globalError != null && globalError.isNotEmpty) {
+                  return _buildErrorBanner(globalError, ref);
+                }
+                return const SizedBox.shrink();
+              },
+            ),
+            // Main content
+            Expanded(child: widget.child),
+          ],
+        ),
       ),
-      bottomNavigationBar: _SmartBottomNavBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        animations: _animations,
+      bottomNavigationBar: _buildBottomNavigationBar(),
+    );
+  }
+
+  Widget _buildErrorBanner(String error, WidgetRef ref) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8.0),
+      color: Colors.orangeAccent.withOpacity(0.1),
+      child: Row(
+        children: [
+          Icon(Icons.warning_amber, color: Colors.orange[700], size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              error.length > 100 ? '${error.substring(0, 100)}...' : error,
+              style: TextStyle(color: Colors.orange[800], fontSize: 12),
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, size: 16, color: Colors.orange[700]),
+            onPressed: () {
+              ref.read(globalErrorProvider.notifier).state = null;
+            },
+          ),
+        ],
       ),
     );
   }
-}
 
-class _SmartBottomNavBar extends StatelessWidget {
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-  final List<Animation<double>> animations;
-
-  const _SmartBottomNavBar({
-    required this.currentIndex,
-    required this.onTap,
-    required this.animations,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return BottomNavigationBar(
-      items: [
-        _buildNavItem(
-          icon: Icons.home_outlined,
-          activeIcon: Icons.home,
+  Widget _buildBottomNavigationBar() {
+    // Using Material 3 NavigationBar
+    return NavigationBar(
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: _onItemTapped,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
           label: 'Home',
-          index: 0,
         ),
-        _buildNavItem(
-          icon: Icons.quiz_outlined,
-          activeIcon: Icons.quiz,
-          label: 'Question',
-          index: 1,
+        NavigationDestination(
+          icon: Icon(Icons.quiz_outlined),
+          selectedIcon: Icon(Icons.quiz),
+          label: 'Questions',
         ),
-        _buildNavItem(
-          icon: Icons.upload_outlined,
-          activeIcon: Icons.upload,
+        NavigationDestination(
+          icon: Icon(Icons.upload_outlined),
+          selectedIcon: Icon(Icons.upload),
           label: 'Upload',
-          index: 2,
         ),
-        _buildNavItem(
-          icon: Icons.schedule_outlined,
-          activeIcon: Icons.schedule,
+        NavigationDestination(
+          icon: Icon(Icons.schedule_outlined),
+          selectedIcon: Icon(Icons.schedule),
           label: 'Study Plan',
-          index: 3,
         ),
       ],
-      currentIndex: currentIndex,
-      onTap: onTap,
-      type: BottomNavigationBarType.fixed,
-      selectedItemColor: Theme.of(context).colorScheme.secondary,
-      unselectedItemColor: Theme.of(context).textTheme.bodySmall?.color,
-      showUnselectedLabels: true,
-    );
-  }
-
-  BottomNavigationBarItem _buildNavItem({
-    required IconData icon,
-    required IconData activeIcon,
-    required String label,
-    required int index,
-  }) {
-    return BottomNavigationBarItem(
-      icon: ScaleTransition(
-        scale: animations[index],
-        child: Icon(icon),
-      ),
-      activeIcon: ScaleTransition(
-        scale: animations[index],
-        child: Icon(activeIcon),
-      ),
-      label: label,
     );
   }
 }

@@ -1,10 +1,12 @@
-// department_model.dart
+// department_model.dart - Updated
 import 'package:hive/hive.dart';
+// --- FIX: Standardized import path ---
+import 'package:diuquestionbank/constants/hive_type_ids.dart';
 
 part 'department_model.g.dart';
 
-@HiveType(typeId: 2)
-class Department {
+@HiveType(typeId: kDepartmentTypeId)
+class Department extends HiveObject {
   @HiveField(0)
   final String id;
 

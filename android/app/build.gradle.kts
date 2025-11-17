@@ -45,10 +45,19 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = keystoreProperties["storeFile"]?.let { file(it) } //
-            storePassword = keystoreProperties["storePassword"] as String
+            val keyAlias = keystoreProperties.getProperty("keyAlias")
+            val keyPassword = keystoreProperties.getProperty("keyPassword")
+            val storeFile = keystoreProperties.getProperty("storeFile")
+            val storePassword = keystoreProperties.getProperty("storePassword")
+
+            if (keyAlias != null && keyPassword != null && storeFile != null && storePassword != null) {
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+                this.storeFile = file(storeFile)
+                this.storePassword = storePassword
+            } else {
+                println("Warning: Missing signing configuration properties")
+            }
         }
     }
 

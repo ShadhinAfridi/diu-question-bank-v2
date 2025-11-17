@@ -1,32 +1,45 @@
-// course_viewmodel.dart
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:flutter/foundation.dart';
-import 'package:hive_flutter/hive_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // Import Riverpod
 
 import '../data/departments.dart';
 import '../models/question_model.dart';
+import '../providers/repository_providers.dart';
+import '../providers/service_providers.dart';
+import '../providers/view_model_providers.dart';
+import '../repositories/interfaces/question_repository.dart';
+// REFACTORED: Removed CacheManager
+// import '../services/cache_manager.dart';
+import 'base_viewmodel.dart';
 
-class CourseViewModel extends ChangeNotifier {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+class CourseViewModel extends BaseViewModel {
+  final IQuestionRepository _questionRepository;
+  // REFACTORED: Removed CacheManager
+  // final CacheManager _cacheManager;
   final String? _userDepartmentId;
-  final Box<Question> _questionsBox = Hive.box<Question>('questions');
-  StreamSubscription? _questionSubscription;
 
   bool _isLoading = false;
   String? _errorMessage;
   Map<String, List<Question>> _courses = {};
   Map<String, List<Question>> _filteredCourses = {};
   String _searchQuery = '';
+  StreamSubscription<List<Question>>? _questionsSubscription;
 
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   Map<String, List<Question>> get courses => _courses;
   Map<String, List<Question>> get filteredCourses => _filteredCourses;
 
-  CourseViewModel({required String? userDepartmentId}) : _userDepartmentId = userDepartmentId {
+  // Constructor now accepts Ref and uses it to get dependencies
+  CourseViewModel(Ref ref)
+      : _questionRepository = ref.watch(questionRepositoryProvider),
+  // REFACTORED: Removed CacheManager
+  // _cacheManager = ref.watch(cacheManagerProvider), // Assumes cacheManagerProvider exists
+        _userDepartmentId = ref.watch(userDepartmentIdProvider) {
     if (_userDepartmentId == null || _userDepartmentId!.isEmpty) {
-      _errorMessage = "Please set your department in your profile to view questions.";
+      _errorMessage =
+      "Please set your department in your profile to view questions.";
       _isLoading = false;
       return;
     }
@@ -35,7 +48,7 @@ class CourseViewModel extends ChangeNotifier {
 
   @override
   void dispose() {
-    _questionSubscription?.cancel();
+    _questionsSubscription?.cancel();
     super.dispose();
   }
 
@@ -44,104 +57,73 @@ class CourseViewModel extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    // 1. Load from cache immediately for a fast UI response
-    final departmentName = getDepartmentNameById(_userDepartmentId);
-    final cachedQuestions = _questionsBox.values.where((q) => q.department == departmentName).toList();
-    if (cachedQuestions.isNotEmpty) {
-      _groupQuestionsByCourse(cachedQuestions);
-      _isLoading = false; // We have data, so we can stop showing the main loading indicator
-      notifyListeners();
-    }
+    _loadCoursesFromCache();
 
-    // 2. Set up Firestore listener for real-time updates
-    final query = _firestore
-        .collection('question-info')
-        .where('department', isEqualTo: departmentName)
-        .orderBy('processedAt', descending: true);
+    _questionsSubscription = _questionRepository.watchAll().listen(
+          (questions) {
+        _processQuestions(questions);
+        _isLoading = false;
+        _errorMessage = null;
+        notifyListeners();
+      },
+      onError: (error) {
+        _errorMessage = "Error listening to questions: ${error.toString()}";
+        _isLoading = false;
+        notifyListeners();
+      },
+    );
+    addSubscription(_questionsSubscription!);
+  }
 
-    _questionSubscription?.cancel(); // Cancel any existing listener
-    _questionSubscription = query.snapshots().listen((snapshot) async {
-      final fetchedQuestions = snapshot.docs.map((doc) => Question.fromFirestore(doc)).toList();
-
-      // 3. Update cache and UI
-      await _cacheQuestions(fetchedQuestions);
-      _groupQuestionsByCourse(fetchedQuestions);
-
-      if (_isLoading) _isLoading = false;
-      _errorMessage = null;
-      notifyListeners();
-
-    }, onError: (error) {
-      _errorMessage = "Error listening to questions: ${error.toString()}";
+  void _loadCoursesFromCache() async {
+    try {
+      // This will now return from cache if available
+      final questions = await _questionRepository.getAll();
+      _processQuestions(questions);
       _isLoading = false;
       notifyListeners();
-    });
+    } catch (e) {
+      // Continue
+    }
+  }
+
+  void _processQuestions(List<Question> questions) {
+    final departmentName = getDepartmentNameById(_userDepartmentId);
+    final departmentQuestions = questions
+        .where((q) => q.department == departmentName)
+        .toList();
+    _groupQuestionsByCourse(departmentQuestions);
   }
 
   Future<void> refreshCourses() async {
     try {
-      final querySnapshot = await _firestore
-          .collection('question-info')
-          .where('department', isEqualTo: getDepartmentNameById(_userDepartmentId))
-          .orderBy('processedAt', descending: true)
-          .get();
-
-      final fetchedQuestions = querySnapshot.docs.map((doc) => Question.fromFirestore(doc)).toList();
-
-      await _cacheQuestions(fetchedQuestions);
-      _groupQuestionsByCourse(fetchedQuestions);
-      _errorMessage = null;
+      // REFACTORED: Repository now handles its own sync time.
+      await _questionRepository.syncWithRemote();
+      // REFACTORED: Removed cache manager logic
+      // final cacheKey = 'courses_${getDepartmentNameById(_userDepartmentId)}';
+      // await _cacheManager.setLastSyncTime(cacheKey, DateTime.now());
     } catch (e) {
       _errorMessage = "Failed to refresh courses: ${e.toString()}";
-    } finally {
-      notifyListeners(); // Update UI after manual refresh
-    }
-  }
-
-  Future<void> _cacheQuestions(List<Question> questionsToCache) async {
-    try {
-      final departmentName = getDepartmentNameById(_userDepartmentId);
-
-      // Find all keys for the current department and delete them before adding new ones
-      final Map<dynamic, Question> allBoxData = _questionsBox.toMap();
-      final List<dynamic> keysToDelete = [];
-      allBoxData.forEach((key, value) {
-        if (value.department == departmentName) {
-          keysToDelete.add(key);
-        }
-      });
-
-      if (keysToDelete.isNotEmpty) {
-        await _questionsBox.deleteAll(keysToDelete);
-      }
-
-      final newQuestionMap = {for (var q in questionsToCache) q.id: q};
-      await _questionsBox.putAll(newQuestionMap);
-    } catch (e) {
-      // Continue even if caching fails, so the app remains functional
-      if (kDebugMode) {
-        print('Error caching questions: $e');
-      }
+      notifyListeners();
     }
   }
 
   void _groupQuestionsByCourse(List<Question> questions) {
-    // Group all questions by course name into a temporary map
     final tempGroupedCourses = <String, List<Question>>{};
     for (var question in questions) {
-      tempGroupedCourses.putIfAbsent(question.courseName, () => []).add(question);
+      tempGroupedCourses
+          .putIfAbsent(question.courseName, () => [])
+          .add(question);
     }
 
-    // Get the list of course names and sort them alphabetically (case-insensitive)
     final sortedCourseNames = tempGroupedCourses.keys.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
-    // Create the final, sorted map of courses
     _courses = {
-      for (var courseName in sortedCourseNames) courseName: tempGroupedCourses[courseName]!
+      for (var courseName in sortedCourseNames)
+        courseName: tempGroupedCourses[courseName]!,
     };
 
-    // After sorting, re-apply the current search filter
     _applySearchFilter();
   }
 
@@ -158,11 +140,20 @@ class CourseViewModel extends ChangeNotifier {
       _filteredCourses = {};
       _courses.forEach((courseName, questions) {
         if (courseName.toLowerCase().contains(_searchQuery) ||
-            questions.any((q) => q.courseCode.toLowerCase().contains(_searchQuery))) {
+            questions.any(
+                  (q) => q.courseCode.toLowerCase().contains(_searchQuery),
+            )) {
           _filteredCourses[courseName] = questions;
         }
       });
     }
-    notifyListeners();
+  }
+
+  Future<void> incrementViewCount(String questionId) async {
+    try {
+      await _questionRepository.incrementViewCount(questionId);
+    } catch (e) {
+      debugPrint('Error incrementing view count: $e');
+    }
   }
 }

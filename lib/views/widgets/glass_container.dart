@@ -1,5 +1,5 @@
+// views/widgets/glass_container.dart
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
 
 class CustomGlassDropdown<T> extends StatelessWidget {
   final T? value;
@@ -9,7 +9,6 @@ class CustomGlassDropdown<T> extends StatelessWidget {
   final String Function(T) displayText;
   final void Function(T?)? onChanged;
   final bool isLoading;
-  final Color dropdownColor;
   final String? disabledHint;
 
   const CustomGlassDropdown({
@@ -21,60 +20,58 @@ class CustomGlassDropdown<T> extends StatelessWidget {
     required this.displayText,
     required this.onChanged,
     this.isLoading = false,
-    this.dropdownColor = const Color(0xFF0A2463),
     this.disabledHint,
   });
 
   @override
   Widget build(BuildContext context) {
-    bool isEnabled = onChanged != null && !isLoading;
+    final theme = Theme.of(context);
+    final isEnabled = onChanged != null && !isLoading;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14),
+          style: theme.textTheme.labelLarge?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
-        const SizedBox(height: AppSpacing.s8),
+        const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.15),
+            color: theme.colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isEnabled
-                  ? Colors.white.withOpacity(0.4)
-                  : Colors.white.withOpacity(0.25),
+              color: theme.colorScheme.outline.withOpacity(0.3),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: DropdownButton<T>(
             value: value,
             isExpanded: true,
             underline: const SizedBox(),
-            dropdownColor: dropdownColor,
+            dropdownColor: theme.colorScheme.surfaceContainerHigh,
             icon: isLoading
                 ? const SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 2),
             )
-                : const Icon(Icons.arrow_drop_down_rounded,
-                color: Colors.white),
+                : Icon(Icons.arrow_drop_down_rounded,
+                color: theme.colorScheme.onSurface),
             hint: Text(
-              isLoading
-                  ? 'Loading...'
-                  : (isEnabled ? hint : disabledHint ?? hint),
-              style: TextStyle(color: Colors.white.withOpacity(0.75)),
+              isLoading ? 'Loading...' : (isEnabled ? hint : disabledHint ?? hint),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             items: items.map((T item) {
               return DropdownMenuItem<T>(
                 value: item,
                 child: Text(
                   displayText(item),
-                  style: const TextStyle(color: Colors.white),
+                  style: theme.textTheme.bodyMedium,
                   overflow: TextOverflow.ellipsis,
                 ),
               );

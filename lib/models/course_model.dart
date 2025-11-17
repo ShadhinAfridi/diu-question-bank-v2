@@ -1,10 +1,12 @@
-// course_model.dart
+// course_model.dart - Updated
 import 'package:hive/hive.dart';
+// --- FIX: Standardized import path ---
+import 'package:diuquestionbank/constants/hive_type_ids.dart';
 
 part 'course_model.g.dart';
 
-@HiveType(typeId: 0)
-class Course {
+@HiveType(typeId: kCourseTypeId)
+class Course extends HiveObject {
   @HiveField(0)
   final String name;
 

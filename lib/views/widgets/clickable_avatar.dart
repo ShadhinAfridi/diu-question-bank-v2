@@ -1,17 +1,19 @@
-import 'package:diuquestionbank/viewmodels/home_viewmodel.dart';
+// views/widgets/clickable_avatar.dart
 import 'package:flutter/material.dart';
 
 class ClickableAvatar extends StatelessWidget {
-  final HomeViewModel viewModel;
+  final String? imageUrl;
+  final String userName;
   final VoidCallback onTap;
-  final double radius;
+  final double size;
   final bool showBorder;
 
   const ClickableAvatar({
     super.key,
-    required this.viewModel,
+    this.imageUrl,
+    required this.userName,
     required this.onTap,
-    this.radius = 25,
+    this.size = 40,
     this.showBorder = false,
   });
 
@@ -21,10 +23,10 @@ class ClickableAvatar extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      customBorder: const CircleBorder(),
-      splashColor: theme.colorScheme.primary.withOpacity(0.2),
-      highlightColor: theme.colorScheme.primary.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(size),
       child: Container(
+        width: size,
+        height: size,
         decoration: showBorder
             ? BoxDecoration(
           shape: BoxShape.circle,
@@ -34,37 +36,20 @@ class ClickableAvatar extends StatelessWidget {
           ),
         )
             : null,
-        child: viewModel.profilePictureUrl != null
+        child: imageUrl != null
             ? CircleAvatar(
-          radius: radius,
-          backgroundColor: theme.colorScheme.secondaryContainer,
-          child: ClipOval(
-            child: FadeInImage.assetNetwork(
-              placeholder: 'assets/images/avatar_placeholder.png',
-              image: viewModel.profilePictureUrl!,
-              fit: BoxFit.cover,
-              width: radius * 2,
-              height: radius * 2,
-              imageErrorBuilder: (context, error, stackTrace) {
-                return _buildFallbackAvatar(theme);
-              },
+          backgroundImage: NetworkImage(imageUrl!),
+          onBackgroundImageError: (exception, stackTrace) {},
+        )
+            : CircleAvatar(
+          backgroundColor: theme.colorScheme.primaryContainer,
+          child: Text(
+            _getInitials(userName),
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onPrimaryContainer,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        )
-            : _buildFallbackAvatar(theme),
-      ),
-    );
-  }
-
-  Widget _buildFallbackAvatar(ThemeData theme) {
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: theme.colorScheme.secondaryContainer,
-      child: Text(
-        _getInitials(viewModel.userName),
-        style: theme.textTheme.titleLarge?.copyWith(
-          color: theme.colorScheme.onSecondaryContainer,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -77,7 +62,7 @@ class ClickableAvatar extends StatelessWidget {
     if (nameParts.length == 1) {
       return nameParts[0][0].toUpperCase();
     } else {
-      return '${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}'.toUpperCase();
+      return '${nameParts[0][0]}${nameParts.last[0]}'.toUpperCase();
     }
   }
 }

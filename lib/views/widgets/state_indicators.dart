@@ -1,10 +1,6 @@
+// views/widgets/state_indicators.dart
 import 'package:flutter/material.dart';
 
-/// A collection of professional, reusable widgets for displaying common UI states
-/// such as loading, error, and empty content. Using these consistent indicators
-/// across the app provides a polished and predictable user experience.
-
-/// A simple, centered CircularProgressIndicator for use on loading screens.
 class CenteredLoadingIndicator extends StatelessWidget {
   const CenteredLoadingIndicator({super.key});
 
@@ -16,7 +12,6 @@ class CenteredLoadingIndicator extends StatelessWidget {
   }
 }
 
-/// A user-friendly widget that displays an error message and a retry button.
 class ErrorDisplay extends StatelessWidget {
   final String message;
   final VoidCallback? onRetry;
@@ -32,7 +27,7 @@ class ErrorDisplay extends StatelessWidget {
     final theme = Theme.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -43,7 +38,7 @@ class ErrorDisplay extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'An Error Occurred',
+              'Something went wrong',
               style: theme.textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
@@ -55,10 +50,10 @@ class ErrorDisplay extends StatelessWidget {
             ),
             if (onRetry != null) ...[
               const SizedBox(height: 24),
-              ElevatedButton.icon(
+              FilledButton.tonalIcon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Try Again'),
+                label: const Text('Try again'),
               ),
             ],
           ],
@@ -68,17 +63,16 @@ class ErrorDisplay extends StatelessWidget {
   }
 }
 
-/// A visually appealing widget to inform the user that a list or content area is empty.
 class EmptyState extends StatelessWidget {
   final IconData icon;
-  final String message;
-  final String details;
+  final String title;
+  final String description;
 
   const EmptyState({
     super.key,
     required this.icon,
-    required this.message,
-    required this.details,
+    required this.title,
+    required this.description,
   });
 
   @override
@@ -86,24 +80,27 @@ class EmptyState extends StatelessWidget {
     final theme = Theme.of(context);
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
               icon,
               size: 80,
-              color: theme.disabledColor,
+              color: theme.colorScheme.outline,
             ),
             const SizedBox(height: 16),
             Text(
-              message,
+              title,
               style: theme.textTheme.headlineSmall,
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              details,
-              style: theme.textTheme.bodyLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              description,
+              style: theme.textTheme.bodyLarge?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],

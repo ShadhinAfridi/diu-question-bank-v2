@@ -1,3 +1,4 @@
+// views/widgets/pro_badge.dart
 import 'package:flutter/material.dart';
 
 class ProBadge extends StatelessWidget {
@@ -5,18 +6,25 @@ class ProBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.amber,
-        borderRadius: BorderRadius.circular(4),
+        gradient: LinearGradient(
+          colors: [
+            theme.colorScheme.primary,
+            theme.colorScheme.primaryContainer,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(6),
       ),
-      child: const Text(
+      child: Text(
         'PRO',
-        style: TextStyle(
-          color: Colors.black,
-          fontWeight: FontWeight.bold,
-          fontSize: 10,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onPrimary,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
         ),
       ),
     );
